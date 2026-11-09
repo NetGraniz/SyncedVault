@@ -1,0 +1,4 @@
+.synced-vault-preview {max-height: 45vh; overflow-y: auto; border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 12px; margin: 12px 0;}
+.synced-vault-preview p {margin: 4px 0; overflow-wrap: anywhere;}
+.synced-vault-danger {color: var(--text-error); font-weight: 600;}
+.synced-vault-note {color: var(--text-muted); font-size: var(--font-ui-small);}

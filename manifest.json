@@ -1,0 +1,9 @@
+{
+  "id": "synced-vault",
+  "name": "Synced Vault",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Preview-first Dropbox sync for an entire Obsidian vault, with conflict copies and deletion tombstones.",
+  "author": "Synced Vault Contributors",
+  "isDesktopOnly": false
+}
