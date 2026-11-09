@@ -3,7 +3,7 @@
   "name": "Synced Vault",
   "version": "0.2.0",
   "minAppVersion": "1.5.0",
-  "description": "Preview-first Dropbox sync for an entire Obsidian vault, with conflict copies and deletion tombstones.",
+  "description": "Sync notes and attachments through Dropbox with conflict protection and deletion history.",
   "author": "NetGraniz",
   "authorUrl": "https://github.com/NetGraniz",
   "isDesktopOnly": false
