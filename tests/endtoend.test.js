@@ -72,7 +72,7 @@ function engine() {
     await plugin.saveData(plugin.state);
     return plugin;
   }
-  return {state, makeApp, pluginFor};
+  return {state, makeApp, pluginFor, DropboxClient:C};
 }
 
 test('Windows to iPhone, then Windows deletion, then iPhone removal', async () => {
@@ -110,4 +110,28 @@ test('offline iPhone edit is preserved when PC deletes same note', async () => {
   await ios.sync();
   await win.sync();
   assert.equal(dec.decode(windows.files.get(conflict)), 'Offline iPhone edit');
+});
+
+test('new local edit during Dropbox download is not silently overwritten', async () => {
+  const {makeApp, pluginFor, DropboxClient} = engine();
+  const windows = makeApp({'Notes/hello.md':'Original'});
+  const iphone = makeApp();
+  const win = await pluginFor(windows), ios = await pluginFor(iphone);
+  await win.sync();
+  await ios.sync();
+  windows.files.set('Notes/hello.md', enc.encode('Updated on PC').buffer);
+  await win.sync();
+  const originalDownload = DropboxClient.prototype.downloadBlob;
+  let raced = false;
+  DropboxClient.prototype.downloadBlob = async function(...args) {
+    if (!raced) { raced = true; iphone.files.set('Notes/hello.md', enc.encode('Changed during sync').buffer); }
+    return originalDownload.apply(this, args);
+  };
+  // sync() reports failures via Notice; the important assertion is that
+  // the local note remains intact, and is saved as a conflict on retry.
+  await ios.sync();
+  assert.equal(dec.decode(iphone.files.get('Notes/hello.md')), 'Changed during sync');
+  await ios.sync();
+  assert.equal(dec.decode(iphone.files.get('Notes/hello.md')), 'Updated on PC');
+  assert.equal([...iphone.files.values()].some(x => dec.decode(x) === 'Changed during sync'), true);
 });
