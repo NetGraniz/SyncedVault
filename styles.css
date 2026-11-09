@@ -2,3 +2,11 @@
 .synced-vault-preview p {margin: 4px 0; overflow-wrap: anywhere;}
 .synced-vault-danger {color: var(--text-error); font-weight: 600;}
 .synced-vault-note {color: var(--text-muted); font-size: var(--font-ui-small);}
+.synced-vault-panel {padding: 8px 12px;}
+.synced-vault-panel h3 {margin: 4px 0 16px;}
+.synced-vault-panel-row {display: flex; flex-direction: column; gap: 4px; margin: 14px 0 4px;}
+.synced-vault-panel-label {color: var(--text-muted); font-size: var(--font-ui-small);}
+.synced-vault-panel-connected {color: var(--text-success);}
+.synced-vault-panel-disconnected {color: var(--text-error);}
+.synced-vault-panel-actions {display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 12px;}
+.synced-vault-panel-actions button {min-height: 30px;}

@@ -17,9 +17,11 @@ function engine() {
     async loadData() {return this.app.data;}
     async saveData(data) {this.app.data=copy(data);}
     addRibbonIcon() {}
+    registerView() {}
     addCommand() {}
     addSettingTab() {}
   }
+  class ItemView {}
   class PluginSettingTab {}
   class Modal {constructor(app) {this.app=app;}}
   const module = {exports:{}};
@@ -27,7 +29,7 @@ function engine() {
   vm.runInNewContext(source, {module, TextEncoder, TextDecoder, URLSearchParams, btoa, ArrayBuffer, Uint8Array, console,
     globalThis:{crypto:webcrypto}, require(name) {
       assert.equal(name, 'obsidian');
-      return {Plugin, PluginSettingTab, Modal, TFile, requestUrl:()=>{throw new Error('unexpected network');}, Setting:class {}, Notice:class {}, normalizePath:p=>p};
+      return {Plugin, PluginSettingTab, ItemView, Modal, TFile, requestUrl:()=>{throw new Error('unexpected network');}, Setting:class {}, Notice:class {}, normalizePath:p=>p};
     }
   });
   module.exports.__test.PreviewModal.prototype.confirm = async () => true;
@@ -62,7 +64,7 @@ function engine() {
         remove:async p=>{files.delete(p);},
       }
     };
-    return {vault, files, data:null};
+    return {vault, files, data:null, workspace:{getLeavesOfType:()=>[]}};
   }
   async function pluginFor(app) {
     const plugin = new module.exports(app);

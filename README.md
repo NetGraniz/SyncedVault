@@ -4,7 +4,13 @@ An **experimental, preview-first Dropbox sync plugin for Obsidian** on Windows a
 
 Synced Vault synchronizes your notes, attachments, images, and the visible `Trash/` folder used by Synced Trash. It saves deletion tombstones in Dropbox so that an out-of-date second device cannot silently restore a deleted note. Concurrent edits are preserved in `Sync Conflicts/` rather than discarded.
 
-> **Version 0.2.1 is an early test release. Back up important notes before testing.** Automated tests cover mocked Dropbox and simulated Windows/iPhone vaults; they are not a substitute for a real two-device test.
+> **Version 0.2.2 is an early test release. Back up important notes before testing.** Automated tests cover mocked Dropbox and simulated Windows/iPhone vaults; they are not a substitute for a real two-device test.
+
+## Synced Vault sidebar
+
+Use the command palette (**Ctrl+P** on Windows) and run **Open Synced Vault panel**. The panel opens in the left sidebar and displays whether Dropbox authorization is stored, the last successful sync time, and buttons for **Sync now** and **Settings**. Drag its tab beside File explorer, Search and Synced Trash to arrange the icons however you like. Obsidian remembers the tab position in its local workspace settings.
+
+**Sync now** opens the existing change preview; it never skips confirmation before applying changes. The original sync button in the Ribbon and the **Review and synchronize Dropbox vault** command remain available. **Connected to Dropbox** means a saved authorization token is present, not that a network request has just succeeded.
 
 ## Install
 
@@ -34,7 +40,7 @@ For each Vault ID, Dropbox stores a manifest at `/vaults/<id>/manifest.json`, pl
 
 Conflicts favor the Dropbox version **only after the previous local version is saved** to `Sync Conflicts/`. The conflict copy can be reviewed and renamed manually. The plugin checks downloaded payloads against their content hashes before writing local files.
 
-## Current limitations (v0.2.1)
+## Current limitations (v0.2.2)
 
 - **Manual synchronization only**. There is no background synchronization or reliable iPhone background scheduling.
 - **100 MiB per file** due to the current single-upload and memory budget. Larger attachments block the sync with an error; no files are intentionally changed. Chunked upload sessions are not yet implemented.
@@ -58,7 +64,7 @@ npm ci
 npm test
 ```
 
-`package-lock.json` is committed so that CI can reproduce dependency resolution. The `.github/workflows/release.yml` workflow verifies the version tag, tests the source, generates provenance attestations, and publishes a GitHub Release with a description taken from `RELEASE_NOTES.md` and the three installation files. Commit the updated source and push tag `0.2.1` **without** a `v` prefix. Let the workflow create the Release; do not create it manually first. GitHub Actions and workflow-token write permissions must be enabled.
+`package-lock.json` is committed so that CI can reproduce dependency resolution. The `.github/workflows/release.yml` workflow verifies the version tag, builds and tests the source, generates provenance attestations, and publishes a GitHub Release with a description taken from `RELEASE_NOTES.md` and the three installation files. Commit the updated source and push tag `0.2.2` **without** a `v` prefix. Let the workflow create the Release; do not create it manually first. GitHub Actions and workflow-token write permissions must be enabled.
 
 ### Why the community scanner flags vault enumeration
 

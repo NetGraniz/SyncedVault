@@ -1,9 +1,10 @@
-/* Synced Vault 0.2.1 — single-file, mobile-compatible Obsidian plugin. */
+/* Synced Vault 0.2.2 — single-file, mobile-compatible Obsidian plugin. */
 'use strict';
 
-const { Plugin, PluginSettingTab, Setting, Modal, Notice, requestUrl, TFile, normalizePath } = require('obsidian');
+const { Plugin, PluginSettingTab, ItemView, Setting, Modal, Notice, requestUrl, TFile, normalizePath } = require('obsidian');
 const MAX_FILE = 100 * 1024 * 1024; // Conservative memory bound for iOS and Dropbox's single upload API.
 const MANIFEST_VERSION = 1;
+const VIEW_TYPE = 'synced-vault-panel';
 
 const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 const asBytes = (buffer) => buffer instanceof ArrayBuffer ? buffer : buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
@@ -208,16 +209,100 @@ class PreviewModal extends Modal {
   confirm() {return new Promise(resolve => {this.result = resolve; this.open();});}
 }
 
+class SyncedVaultPanel extends ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+  getViewType() { return VIEW_TYPE; }
+  getDisplayText() { return 'Synced Vault'; }
+  getIcon() { return 'refresh-cw'; }
+  async onOpen() { this.render(); }
+  onShow() { this.render(); }
+  async onClose() { this.contentEl.empty(); }
+
+  render() {
+    const root = this.contentEl;
+    root.empty();
+    root.addClass('synced-vault-panel');
+    root.createEl('h3', {text:'Synced Vault'});
+
+    const connected = !!this.plugin.state.refreshToken;
+    const status = root.createDiv({cls:'synced-vault-panel-row'});
+    status.createEl('span', {text:'Dropbox', cls:'synced-vault-panel-label'});
+    status.createEl('strong', {
+      text:connected ? 'Connected to Dropbox' : 'Not connected',
+      cls:connected ? 'synced-vault-panel-connected' : 'synced-vault-panel-disconnected',
+    });
+    root.createEl('p', {
+      text:connected ? 'Authorization saved. Connection is checked when syncing.' : 'Connect your Dropbox account in Settings.',
+      cls:'synced-vault-note',
+    });
+
+    const lastSync = this.plugin.state.lastSync;
+    const parsedTime = lastSync ? new Date(lastSync) : null;
+    const lastSyncText = parsedTime && Number.isFinite(parsedTime.getTime())
+      ? parsedTime.toLocaleString()
+      : 'Never';
+    const last = root.createDiv({cls:'synced-vault-panel-row'});
+    last.createEl('span', {text:'Last sync', cls:'synced-vault-panel-label'});
+    last.createEl('strong', {text:lastSyncText});
+
+    const actions = root.createDiv({cls:'synced-vault-panel-actions'});
+    const syncButton = actions.createEl('button', {
+      text:this.plugin.running ? 'Sync in progress…' : 'Sync now',
+      cls:'mod-cta',
+    });
+    syncButton.disabled = this.plugin.running || !connected;
+    syncButton.addEventListener('click', () => void this.plugin.sync());
+    const settingsButton = actions.createEl('button', {text:'Settings'});
+    settingsButton.addEventListener('click', () => this.plugin.openSettings());
+    root.createEl('p', {
+      text:'Sync opens a preview before applying any changes.',
+      cls:'synced-vault-note',
+    });
+  }
+}
+
 class SyncedVault extends Plugin {
   async onload() {
     const loaded = await this.loadData() || {};
     this.state = Object.assign({appKey:'', refreshToken:'', namespace:'main', syncConfig:false, baseline:{}, remoteSeen:false, deviceId:'', pendingVerifier:'', lastSync:''}, loaded);
     if (!this.state.deviceId) this.state.deviceId = toHex(globalThis.crypto.getRandomValues(new Uint8Array(8)));
     this.running = false;
+    this.registerView(VIEW_TYPE, leaf => new SyncedVaultPanel(leaf, this));
     this.addRibbonIcon('refresh-cw', 'Synced Vault: Review sync', () => this.sync());
     this.addCommand({id:'sync', name:'Review and synchronize Dropbox vault', callback:() => this.sync()});
+    this.addCommand({id:'open-panel', name:'Open Synced Vault panel', callback:() => this.openPanel()});
     this.addSettingTab(new SyncedVaultSettings(this.app, this));
     await this.saveData(this.state);
+  }
+
+  async openPanel() {
+    let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
+    if (!leaf) {
+      // A new left-sidebar leaf preserves existing File explorer / Search tabs.
+      leaf = this.app.workspace.getLeftLeaf(true) || this.app.workspace.getLeaf('tab');
+      await leaf.setViewState({type:VIEW_TYPE, active:true});
+    }
+    await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof SyncedVaultPanel) leaf.view.render();
+  }
+
+  refreshPanel() {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+      if (leaf.view instanceof SyncedVaultPanel) leaf.view.render();
+    }
+  }
+
+  openSettings() {
+    const settings = this.app.setting;
+    if (settings && typeof settings.open === 'function') {
+      settings.open();
+      if (typeof settings.openTabById === 'function') settings.openTabById('synced-vault');
+    } else {
+      new Notice('Open Settings → Community plugins → Synced Vault.');
+    }
   }
 
   configDir() { return this.app.vault.configDir || '.obsidian'; }
@@ -308,6 +393,7 @@ class SyncedVault extends Plugin {
   async sync() {
     if (this.running) return new Notice('Synced Vault: sync already running.');
     this.running = true;
+    this.refreshPanel();
     try {
       new Notice('Synced Vault: scanning local and Dropbox files…');
       const client = this.client();
@@ -391,7 +477,10 @@ class SyncedVault extends Plugin {
     } catch (e) {
       console.error('[Synced Vault]', e);
       new Notice('Synced Vault: ' + errorText(e), 12000);
-    } finally {this.running = false;}
+    } finally {
+      this.running = false;
+      this.refreshPanel();
+    }
   }
 
   async authorize() {
@@ -414,6 +503,7 @@ class SyncedVault extends Plugin {
     this.state.refreshToken = refreshToken;
     this.state.pendingVerifier = '';
     await this.saveData(this.state);
+    this.refreshPanel();
   }
 }
 
@@ -422,13 +512,13 @@ class SyncedVaultSettings extends PluginSettingTab {
   display() {
     const {containerEl} = this; const p = this.plugin; containerEl.empty();
     containerEl.createEl('h2', {text:'Synced Vault — Dropbox'});
-    containerEl.createEl('p', {cls:'synced-vault-danger', text:'EXPERIMENTAL 0.2.1. Back up your vault before syncing. Disable Remotely Save in this vault. All synchronization is manual and previewed.'});
+    containerEl.createEl('p', {cls:'synced-vault-danger', text:'EXPERIMENTAL 0.2.2. Back up your vault before syncing. Disable Remotely Save in this vault. All synchronization is manual and previewed.'});
     new Setting(containerEl).setName('Dropbox App Key').setDesc('Create a scoped App Folder app with files.content.read, files.content.write, and files.metadata.read permissions. Never enter the App Secret.').addText(t => t.setPlaceholder('App Key').setValue(p.state.appKey).onChange(async val => {const next = val.trim(); if (p.state.refreshToken && next !== p.state.appKey) {new Notice('App Key cannot be changed after Dropbox authorization.'); this.display(); return;} p.state.appKey = next; await p.saveData(p.state);}));
     new Setting(containerEl).setName('Vault ID').setDesc('Use the EXACT same ID and Dropbox account on Windows and iPhone. One ID per separate vault.').addText(t => t.setValue(p.state.namespace).onChange(async val => { if (p.state.remoteSeen || Object.keys(p.state.baseline).length) {new Notice('Cannot change Vault ID after syncing.'); return;} p.state.namespace = val.trim(); await p.saveData(p.state);}));
     new Setting(containerEl).setName('Authorize Dropbox').setDesc('Dropbox displays a one-time code; copy it to the next field.').addButton(b => b.setButtonText('Open Dropbox').onClick(async () => {try {await p.authorize();} catch(e) {new Notice(errorText(e));}}));
     let authorizationCode = '';
     new Setting(containerEl).setName('Authorization code').addText(t => t.setPlaceholder('Paste Dropbox code here').onChange(value => {authorizationCode = value;})).addButton(b => b.setButtonText('Connect').onClick(async () => {try {await p.connect(authorizationCode); new Notice('Dropbox connected.'); this.display();} catch(e) {new Notice(errorText(e), 10000);}}));
-    new Setting(containerEl).setName('Sync .obsidian settings').setDesc('OFF by default. If enabled, includes most .obsidian settings and plugins, but excludes workspace layout, this plugin’s credentials, and Remotely Save settings. Enable consistently on both devices.').addToggle(toggle => toggle.setValue(p.state.syncConfig).onChange(async value => {if (Object.keys(p.state.baseline).length) {new Notice('Configuration sync scope cannot be changed after syncing in v0.2.1.'); this.display(); return;} p.state.syncConfig = value; await p.saveData(p.state);}));
+    new Setting(containerEl).setName('Sync .obsidian settings').setDesc('OFF by default. If enabled, includes most .obsidian settings and plugins, but excludes workspace layout, this plugin’s credentials, and Remotely Save settings. Enable consistently on both devices.').addToggle(toggle => toggle.setValue(p.state.syncConfig).onChange(async value => {if (Object.keys(p.state.baseline).length) {new Notice('Configuration sync scope cannot be changed after the first sync.'); this.display(); return;} p.state.syncConfig = value; await p.saveData(p.state);}));
     new Setting(containerEl).setName('Review and sync').setDesc('Never automatically applies deletions; shows a full preview first.').addButton(b => b.setButtonText('Preview sync').setCta().onClick(() => p.sync()));
     containerEl.createEl('p', {cls:'synced-vault-note', text:(p.state.refreshToken ? 'Connected to Dropbox.' : 'Not connected.') + (p.state.lastSync ? ' Last successful sync: ' + new Date(p.state.lastSync).toLocaleString() : '')});
     containerEl.createEl('p', {cls:'synced-vault-note', text:'Limit: 100 MiB per file. Remote deletions use persistent tombstones. Files under .trash and .git are excluded; visible Trash is included.'});

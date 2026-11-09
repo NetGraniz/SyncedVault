@@ -52,13 +52,14 @@ function load() {
   const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
   const module = {exports:{}};
   class Plugin {}
+  class ItemView {}
   class PluginSettingTab {}
   class Modal {}
   class TFile {}
   vm.runInNewContext(source, {module, TextEncoder, TextDecoder, URLSearchParams, btoa, ArrayBuffer, Uint8Array,
     globalThis:{crypto:webcrypto}, require(id) {
       if (id !== 'obsidian') throw new Error('unexpected module');
-      return {Plugin, PluginSettingTab, Modal, TFile, requestUrl:mockedRequest, Notice:class {}, Setting:class {}, normalizePath:p=>p};
+      return {Plugin, PluginSettingTab, ItemView, Modal, TFile, requestUrl:mockedRequest, Notice:class {}, Setting:class {}, normalizePath:p=>p};
     }
   });
   return module.exports.__test.DropboxClient;

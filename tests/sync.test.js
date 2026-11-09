@@ -9,13 +9,14 @@ const {webcrypto} = require('node:crypto');
 function load(requestUrl = async () => {throw new Error('mock network not configured');}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
   class Plugin {}
+  class ItemView {}
   class PluginSettingTab {}
   class Modal {}
   class TFile {}
   const exports = {exports:{}};
   const context = {module:exports, TextEncoder, TextDecoder, URLSearchParams, btoa, ArrayBuffer, Uint8Array,
     globalThis:{crypto:webcrypto}, require(id) { if (id !== 'obsidian') throw new Error('Unexpected ' + id);
-      return {Plugin, PluginSettingTab, Modal, TFile, requestUrl, Notice:class {}, Setting:class {}, normalizePath:p=>p};
+      return {Plugin, PluginSettingTab, ItemView, Modal, TFile, requestUrl, Notice:class {}, Setting:class {}, normalizePath:p=>p};
     }
   };
   vm.runInNewContext(source, context, {filename:'main.js'});
