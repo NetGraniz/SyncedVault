@@ -1,4 +1,4 @@
-/* Synced Vault 0.2.0 — single-file, mobile-compatible Obsidian plugin. */
+/* Synced Vault 0.2.1 — single-file, mobile-compatible Obsidian plugin. */
 'use strict';
 
 const { Plugin, PluginSettingTab, Setting, Modal, Notice, requestUrl, TFile, normalizePath } = require('obsidian');
@@ -422,13 +422,13 @@ class SyncedVaultSettings extends PluginSettingTab {
   display() {
     const {containerEl} = this; const p = this.plugin; containerEl.empty();
     containerEl.createEl('h2', {text:'Synced Vault — Dropbox'});
-    containerEl.createEl('p', {cls:'synced-vault-danger', text:'EXPERIMENTAL 0.2.0. Back up your vault before syncing. Disable Remotely Save in this vault. All synchronization is manual and previewed.'});
+    containerEl.createEl('p', {cls:'synced-vault-danger', text:'EXPERIMENTAL 0.2.1. Back up your vault before syncing. Disable Remotely Save in this vault. All synchronization is manual and previewed.'});
     new Setting(containerEl).setName('Dropbox App Key').setDesc('Create a scoped App Folder app with files.content.read, files.content.write, and files.metadata.read permissions. Never enter the App Secret.').addText(t => t.setPlaceholder('App Key').setValue(p.state.appKey).onChange(async val => {const next = val.trim(); if (p.state.refreshToken && next !== p.state.appKey) {new Notice('App Key cannot be changed after Dropbox authorization.'); this.display(); return;} p.state.appKey = next; await p.saveData(p.state);}));
     new Setting(containerEl).setName('Vault ID').setDesc('Use the EXACT same ID and Dropbox account on Windows and iPhone. One ID per separate vault.').addText(t => t.setValue(p.state.namespace).onChange(async val => { if (p.state.remoteSeen || Object.keys(p.state.baseline).length) {new Notice('Cannot change Vault ID after syncing.'); return;} p.state.namespace = val.trim(); await p.saveData(p.state);}));
     new Setting(containerEl).setName('Authorize Dropbox').setDesc('Dropbox displays a one-time code; copy it to the next field.').addButton(b => b.setButtonText('Open Dropbox').onClick(async () => {try {await p.authorize();} catch(e) {new Notice(errorText(e));}}));
     let authorizationCode = '';
     new Setting(containerEl).setName('Authorization code').addText(t => t.setPlaceholder('Paste Dropbox code here').onChange(value => {authorizationCode = value;})).addButton(b => b.setButtonText('Connect').onClick(async () => {try {await p.connect(authorizationCode); new Notice('Dropbox connected.'); this.display();} catch(e) {new Notice(errorText(e), 10000);}}));
-    new Setting(containerEl).setName('Sync .obsidian settings').setDesc('OFF by default. If enabled, includes most .obsidian settings and plugins, but excludes workspace layout, this plugin’s credentials, and Remotely Save settings. Enable consistently on both devices.').addToggle(toggle => toggle.setValue(p.state.syncConfig).onChange(async value => {if (Object.keys(p.state.baseline).length) {new Notice('Configuration sync scope cannot be changed after syncing in v0.2.'); this.display(); return;} p.state.syncConfig = value; await p.saveData(p.state);}));
+    new Setting(containerEl).setName('Sync .obsidian settings').setDesc('OFF by default. If enabled, includes most .obsidian settings and plugins, but excludes workspace layout, this plugin’s credentials, and Remotely Save settings. Enable consistently on both devices.').addToggle(toggle => toggle.setValue(p.state.syncConfig).onChange(async value => {if (Object.keys(p.state.baseline).length) {new Notice('Configuration sync scope cannot be changed after syncing in v0.2.1.'); this.display(); return;} p.state.syncConfig = value; await p.saveData(p.state);}));
     new Setting(containerEl).setName('Review and sync').setDesc('Never automatically applies deletions; shows a full preview first.').addButton(b => b.setButtonText('Preview sync').setCta().onClick(() => p.sync()));
     containerEl.createEl('p', {cls:'synced-vault-note', text:(p.state.refreshToken ? 'Connected to Dropbox.' : 'Not connected.') + (p.state.lastSync ? ' Last successful sync: ' + new Date(p.state.lastSync).toLocaleString() : '')});
     containerEl.createEl('p', {cls:'synced-vault-note', text:'Limit: 100 MiB per file. Remote deletions use persistent tombstones. Files under .trash and .git are excluded; visible Trash is included.'});

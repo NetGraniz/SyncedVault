@@ -4,7 +4,7 @@ An **experimental, preview-first Dropbox sync plugin for Obsidian** on Windows a
 
 Synced Vault synchronizes your notes, attachments, images, and the visible `Trash/` folder used by Synced Trash. It saves deletion tombstones in Dropbox so that an out-of-date second device cannot silently restore a deleted note. Concurrent edits are preserved in `Sync Conflicts/` rather than discarded.
 
-> **Version 0.2.0 is an early test release. Back up important notes before testing.** Automated tests cover mocked Dropbox and simulated Windows/iPhone vaults; they are not a substitute for a real two-device test.
+> **Version 0.2.1 is an early test release. Back up important notes before testing.** Automated tests cover mocked Dropbox and simulated Windows/iPhone vaults; they are not a substitute for a real two-device test.
 
 ## Install
 
@@ -34,7 +34,7 @@ For each Vault ID, Dropbox stores a manifest at `/vaults/<id>/manifest.json`, pl
 
 Conflicts favor the Dropbox version **only after the previous local version is saved** to `Sync Conflicts/`. The conflict copy can be reviewed and renamed manually. The plugin checks downloaded payloads against their content hashes before writing local files.
 
-## Current limitations (v0.2.0)
+## Current limitations (v0.2.1)
 
 - **Manual synchronization only**. There is no background synchronization or reliable iPhone background scheduling.
 - **100 MiB per file** due to the current single-upload and memory budget. Larger attachments block the sync with an error; no files are intentionally changed. Chunked upload sessions are not yet implemented.
@@ -54,8 +54,15 @@ The runtime plugin needs no npm installation and no build step; it ships directl
 To run the built-in tests on a development machine with Node.js 18+:
 
 ```sh
+npm ci
 npm test
 ```
+
+`package-lock.json` is committed so that CI can reproduce dependency resolution. The `.github/workflows/release.yml` workflow verifies the version tag, tests the source, generates provenance attestations, and publishes a GitHub Release with a description taken from `RELEASE_NOTES.md` and the three installation files. Commit the updated source and push tag `0.2.1` **without** a `v` prefix. Let the workflow create the Release; do not create it manually first. GitHub Actions and workflow-token write permissions must be enabled.
+
+### Why the community scanner flags vault enumeration
+
+The sync engine must list the vault's files to compare changes, detect deletions, and protect conflicting edits. This use of `vault.getFiles()` is intentional; removing it would break full-vault synchronization. `.obsidian`, `.trash`, and other excluded paths are filtered by the plugin's sync rules, and vault contents are sent only to the Dropbox App Folder you authorize. The scanner may continue showing a **Vault Enumeration** recommendation even when the code is functioning as designed.
 
 Source contributions and bug reports should include the Obsidian version, platform, proposed preview operations, and the redacted error message. **Never upload your OAuth code, token, or private notes.**
 
