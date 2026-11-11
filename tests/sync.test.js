@@ -23,7 +23,7 @@ function load(requestUrl = async () => {throw new Error('mock network not config
   return exports.exports.__test;
 }
 
-const {planChanges, validateManifest, safePath, caseCollision, escapeDropboxHeader} = load();
+const {planChanges, validateManifest, safePath, caseCollision, removeCaseVariantTombstones, escapeDropboxHeader} = load();
 const h1 = 'a'.repeat(64), h2 = 'b'.repeat(64), h3 = 'c'.repeat(64);
 const plan = (local, remote, baseline) => Array.from(planChanges(local, remote, baseline), x => x.type + ':' + x.path);
 
@@ -58,6 +58,23 @@ test('manifest rejects path traversal and excessive size', () => {
 });
 test('case-colliding paths on Windows are rejected', () => {
   assert.throws(() => caseCollision(['Hello.md', 'hello.md']), /colliding/);
+});
+
+test('a deleted casing variant does not permanently reserve a live path', () => {
+  const entries = {
+    'Note.md': {deleted:true},
+    'note.md': {blob:h1, size:2},
+  };
+  assert.doesNotThrow(() => validateManifest({version:1, entries}, '.obsidian'));
+  removeCaseVariantTombstones(entries, 'note.md');
+  assert.deepEqual(Object.keys(entries), ['note.md']);
+});
+
+test('two live case-colliding manifest paths remain invalid', () => {
+  assert.throws(() => validateManifest({version:1, entries:{
+    'Note.md': {blob:h1, size:2},
+    'note.md': {blob:h1, size:2},
+  }}, '.obsidian'), /colliding/);
 });
 test('unsafe configuration and trash internals are excluded', () => {
   assert.equal(safePath('.obsidian/plugins/synced-vault/data.json'), false);

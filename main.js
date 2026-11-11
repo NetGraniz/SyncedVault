@@ -1,8 +1,9 @@
-/* Synced Vault 0.2.2 — single-file, mobile-compatible Obsidian plugin. */
+/* Synced Vault 0.2.3 — mobile-compatible Obsidian plugin. */
 'use strict';
 
 const { Plugin, PluginSettingTab, ItemView, Setting, Modal, Notice, requestUrl, TFile, normalizePath } = require('obsidian');
 const MAX_FILE = 100 * 1024 * 1024; // Conservative memory bound for iOS and Dropbox's single upload API.
+const MAX_MANIFEST_BYTES = 32 * 1024 * 1024;
 const MANIFEST_VERSION = 1;
 const VIEW_TYPE = 'synced-vault-panel';
 
@@ -63,18 +64,34 @@ function validateManifest(manifest, configFolder) {
   }
   const paths = Object.keys(manifest.entries);
   if (paths.length > 100000) throw new Error('Manifest contains too many entries.');
-  const seen = new Set();
+  const seen = new Map();
   for (const path of paths) {
     if (!safePath(path, configFolder)) throw new Error('Unsafe file path in Dropbox manifest: ' + path);
-    const key = path.toLocaleLowerCase('en-US');
-    if (seen.has(key)) throw new Error('Case-colliding files in Dropbox manifest: ' + path);
-    seen.add(key);
     const entry = manifest.entries[path];
     if (!entry || typeof entry !== 'object') throw new Error('Invalid manifest item: ' + path);
     if (entry.deleted !== true && !/^[a-f0-9]{64}$/.test(entry.blob || '')) throw new Error('Invalid file hash: ' + path);
     if (entry.deleted !== true && (!Number.isSafeInteger(entry.size) || entry.size < 0 || entry.size > MAX_FILE)) throw new Error('Unsupported file size: ' + path);
+    const key = path.toLocaleLowerCase('en-US');
+    if (seen.has(key)) {
+      const previous = manifest.entries[seen.get(key)];
+      if (previous.deleted !== true && entry.deleted !== true) {
+        throw new Error('Case-colliding files in Dropbox manifest: ' + path);
+      }
+      if (previous.deleted === true && entry.deleted !== true) seen.set(key, path);
+    } else {
+      seen.set(key, path);
+    }
   }
   return manifest;
+}
+
+function removeCaseVariantTombstones(entries, path) {
+  const key = path.toLocaleLowerCase('en-US');
+  for (const [candidate, entry] of Object.entries(entries)) {
+    if (candidate !== path && candidate.toLocaleLowerCase('en-US') === key && entry?.deleted === true) {
+      delete entries[candidate];
+    }
+  }
 }
 
 function caseCollision(paths) {
@@ -152,6 +169,9 @@ class DropboxClient {
       if (!before) return {rev:null, data:{version:MANIFEST_VERSION, entries:{}}};
       const response = await this.content('files/download', {path});
       if (response.status !== 200) throw new Error('Cannot download Dropbox manifest: HTTP ' + response.status);
+      if (!response.arrayBuffer || !Number.isSafeInteger(response.arrayBuffer.byteLength) || response.arrayBuffer.byteLength > MAX_MANIFEST_BYTES) {
+        throw new Error('Dropbox manifest is missing or exceeds the safe size limit.');
+      }
       const after = await this.metadata(path);
       if (after && before.rev === after.rev) return {rev:after.rev, data:JSON.parse(decode.decode(response.arrayBuffer))};
     }
@@ -204,6 +224,25 @@ class PreviewModal extends Modal {
     const buttons = new Setting(contentEl);
     buttons.addButton(b => b.setButtonText('Cancel').onClick(() => {this.result?.(false); this.result = null; this.close();}));
     buttons.addButton(b => b.setButtonText('Apply changes').setCta().setDisabled(!this.operations.length).onClick(() => {this.result?.(true); this.result = null; this.close();}));
+  }
+  onClose() {this.result?.(false); this.result = null; this.contentEl.empty();}
+  confirm() {return new Promise(resolve => {this.result = resolve; this.open();});}
+}
+
+class ConfirmActionModal extends Modal {
+  constructor(app, title, message, confirmLabel) {
+    super(app);
+    this.title = title;
+    this.message = message;
+    this.confirmLabel = confirmLabel;
+    this.result = null;
+  }
+  onOpen() {
+    this.setTitle(this.title);
+    this.contentEl.createEl('p', {text:this.message, cls:'synced-vault-danger'});
+    const buttons = new Setting(this.contentEl);
+    buttons.addButton(b => b.setButtonText('Cancel').onClick(() => {this.result?.(false); this.result = null; this.close();}));
+    buttons.addButton(b => b.setButtonText(this.confirmLabel).onClick(() => {this.result?.(true); this.result = null; this.close();}));
   }
   onClose() {this.result?.(false); this.result = null; this.contentEl.empty();}
   confirm() {return new Promise(resolve => {this.result = resolve; this.open();});}
@@ -327,7 +366,7 @@ class SyncedVault extends Plugin {
     for (const file of listing.files) {
       if (!this.shouldSync(file)) continue;
       const bytes = await adapter.readBinary(file);
-      if (bytes.byteLength > MAX_FILE) throw new Error('File too large for v0.1: ' + file);
+      if (bytes.byteLength > MAX_FILE) throw new Error('File too large for Synced Vault: ' + file);
       out[file] = {hash:await hashBytes(bytes), size:bytes.byteLength};
     }
     for (const child of listing.folders) if (child !== folder && safePath(child + '/file', this.configDir())) await this.scanConfig(child, out);
@@ -337,8 +376,9 @@ class SyncedVault extends Plugin {
     const out = {};
     for (const file of this.app.vault.getFiles()) {
       if (!this.shouldSync(file.path)) continue;
-      if (file.stat.size > MAX_FILE) throw new Error('File too large for v0.1: ' + file.path + ' (' + file.stat.size + ' bytes)');
+      if (file.stat.size > MAX_FILE) throw new Error('File too large for Synced Vault: ' + file.path + ' (' + file.stat.size + ' bytes)');
       const bytes = await this.app.vault.readBinary(file);
+      if (bytes.byteLength > MAX_FILE) throw new Error('File grew beyond the supported size while scanning: ' + file.path);
       out[file.path] = {hash:await hashBytes(bytes), size:bytes.byteLength};
     }
     if (this.state.syncConfig) await this.scanConfig(this.configDir(), out);
@@ -406,7 +446,8 @@ class SyncedVault extends Plugin {
       const scopedBaseline = Object.fromEntries(Object.entries(this.state.baseline || {}).filter(([path]) => this.shouldSync(path)));
       const operations = planChanges(hashes, scopedRemote, scopedBaseline);
       // Don't allow a deleted directory/file or a new path to collide on Windows.
-      caseCollision([...new Set([...Object.keys(local), ...Object.keys(scopedRemote)])]);
+      const remoteLivePaths = Object.entries(scopedRemote).filter(([, entry]) => entry.deleted !== true).map(([path]) => path);
+      caseCollision([...new Set([...Object.keys(local), ...remoteLivePaths])]);
       if (!operations.length) {
         this.state.baseline = Object.fromEntries(Object.entries(scopedRemote).map(([path, entry]) => [path, entry.deleted ? null : entry.blob]));
         this.state.remoteSeen ||= !!remote.rev;
@@ -426,9 +467,13 @@ class SyncedVault extends Plugin {
         if (op.type === 'push') {
           const bytes = await this.readLocal(op.path);
           if (await hashBytes(bytes) !== op.hash) throw new Error('Local file changed after preview: ' + op.path);
+          if (bytes.byteLength > MAX_FILE) throw new Error('File exceeds maximum supported size: ' + op.path);
           await client.uploadBlob(op.hash, bytes);
+          removeCaseVariantTombstones(modified.entries, op.path);
           modified.entries[op.path] = {blob:op.hash, size:bytes.byteLength, changed:new Date().toISOString(), device:this.state.deviceId};
         } else if (op.type === 'tombstone') {
+          await this.assertLocalUnchanged(op.path, null);
+          removeCaseVariantTombstones(modified.entries, op.path);
           modified.entries[op.path] = {deleted:true, changed:new Date().toISOString(), device:this.state.deviceId};
         } else {
           pendingLocal.push(op);
@@ -499,8 +544,15 @@ class SyncedVault extends Plugin {
     if (!this.state.pendingVerifier) throw new Error('Click Open Dropbox Authorization first.');
     const refreshToken = await DropboxClient.authorize(this.state.appKey.trim(), this.state.pendingVerifier, code.trim());
     // Changing account must never silently apply old baseline; require a fresh vault copy.
-    if (this.state.refreshToken && this.state.refreshToken !== refreshToken) throw new Error('Dropbox account change is blocked. Back up your vault and reinstall with a new test vault first.');
+    if (this.state.refreshToken && this.state.refreshToken !== refreshToken) throw new Error('A Dropbox authorization is already saved. Use Forget saved authorization before reconnecting.');
     this.state.refreshToken = refreshToken;
+    this.state.pendingVerifier = '';
+    await this.saveData(this.state);
+    this.refreshPanel();
+  }
+
+  async forgetAuthorization() {
+    this.state.refreshToken = '';
     this.state.pendingVerifier = '';
     await this.saveData(this.state);
     this.refreshPanel();
@@ -512,12 +564,19 @@ class SyncedVaultSettings extends PluginSettingTab {
   display() {
     const {containerEl} = this; const p = this.plugin; containerEl.empty();
     containerEl.createEl('h2', {text:'Synced Vault — Dropbox'});
-    containerEl.createEl('p', {cls:'synced-vault-danger', text:'EXPERIMENTAL 0.2.2. Back up your vault before syncing. Disable Remotely Save in this vault. All synchronization is manual and previewed.'});
+    containerEl.createEl('p', {cls:'synced-vault-danger', text:'EXPERIMENTAL 0.2.3. Back up your vault before syncing. Disable Remotely Save in this vault. All synchronization is manual and previewed.'});
     new Setting(containerEl).setName('Dropbox App Key').setDesc('Create a scoped App Folder app with files.content.read, files.content.write, and files.metadata.read permissions. Never enter the App Secret.').addText(t => t.setPlaceholder('App Key').setValue(p.state.appKey).onChange(async val => {const next = val.trim(); if (p.state.refreshToken && next !== p.state.appKey) {new Notice('App Key cannot be changed after Dropbox authorization.'); this.display(); return;} p.state.appKey = next; await p.saveData(p.state);}));
     new Setting(containerEl).setName('Vault ID').setDesc('Use the EXACT same ID and Dropbox account on Windows and iPhone. One ID per separate vault.').addText(t => t.setValue(p.state.namespace).onChange(async val => { if (p.state.remoteSeen || Object.keys(p.state.baseline).length) {new Notice('Cannot change Vault ID after syncing.'); return;} p.state.namespace = val.trim(); await p.saveData(p.state);}));
     new Setting(containerEl).setName('Authorize Dropbox').setDesc('Dropbox displays a one-time code; copy it to the next field.').addButton(b => b.setButtonText('Open Dropbox').onClick(async () => {try {await p.authorize();} catch(e) {new Notice(errorText(e));}}));
     let authorizationCode = '';
     new Setting(containerEl).setName('Authorization code').addText(t => t.setPlaceholder('Paste Dropbox code here').onChange(value => {authorizationCode = value;})).addButton(b => b.setButtonText('Connect').onClick(async () => {try {await p.connect(authorizationCode); new Notice('Dropbox connected.'); this.display();} catch(e) {new Notice(errorText(e), 10000);}}));
+    if (p.state.refreshToken) new Setting(containerEl).setName('Forget saved authorization').setDesc('Use this after revoking access in Dropbox or before reconnecting. Sync history and the device ID are preserved.').addButton(b => b.setButtonText('Forget authorization').onClick(async () => {
+      const confirmed = await new ConfirmActionModal(this.app, 'Forget Dropbox authorization?', 'This removes the saved token from this device only. It does not revoke the token in Dropbox and does not delete sync history.', 'Forget authorization').confirm();
+      if (!confirmed) return;
+      await p.forgetAuthorization();
+      new Notice('Saved Dropbox authorization removed.');
+      this.display();
+    }));
     new Setting(containerEl).setName('Sync .obsidian settings').setDesc('OFF by default. If enabled, includes most .obsidian settings and plugins, but excludes workspace layout, this plugin’s credentials, and Remotely Save settings. Enable consistently on both devices.').addToggle(toggle => toggle.setValue(p.state.syncConfig).onChange(async value => {if (Object.keys(p.state.baseline).length) {new Notice('Configuration sync scope cannot be changed after the first sync.'); this.display(); return;} p.state.syncConfig = value; await p.saveData(p.state);}));
     new Setting(containerEl).setName('Review and sync').setDesc('Never automatically applies deletions; shows a full preview first.').addButton(b => b.setButtonText('Preview sync').setCta().onClick(() => p.sync()));
     containerEl.createEl('p', {cls:'synced-vault-note', text:(p.state.refreshToken ? 'Connected to Dropbox.' : 'Not connected.') + (p.state.lastSync ? ' Last successful sync: ' + new Date(p.state.lastSync).toLocaleString() : '')});
@@ -527,4 +586,4 @@ class SyncedVaultSettings extends PluginSettingTab {
 
 module.exports = SyncedVault;
 // Pure helpers exported for deterministic, offline regression tests.
-module.exports.__test = {planChanges, safePath, validateManifest, caseCollision, escapeDropboxHeader, DropboxClient, PreviewModal, MAX_FILE};
+module.exports.__test = {planChanges, safePath, validateManifest, caseCollision, removeCaseVariantTombstones, escapeDropboxHeader, DropboxClient, PreviewModal, MAX_FILE, MAX_MANIFEST_BYTES};

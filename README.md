@@ -4,7 +4,7 @@ An **experimental, preview-first Dropbox sync plugin for Obsidian** on Windows a
 
 Synced Vault synchronizes your notes, attachments, images, and the visible `Trash/` folder used by Synced Trash. It saves deletion tombstones in Dropbox so that an out-of-date second device cannot silently restore a deleted note. Concurrent edits are preserved in `Sync Conflicts/` rather than discarded.
 
-> **Version 0.2.2 is an early test release. Back up important notes before testing.** Automated tests cover mocked Dropbox and simulated Windows/iPhone vaults; they are not a substitute for a real two-device test.
+> **Version 0.2.3 is an early test release. Back up important notes before testing.** Automated tests cover mocked Dropbox and simulated Windows/iPhone vaults; they are not a substitute for a real two-device test.
 
 ## Synced Vault sidebar
 
@@ -40,7 +40,7 @@ For each Vault ID, Dropbox stores a manifest at `/vaults/<id>/manifest.json`, pl
 
 Conflicts favor the Dropbox version **only after the previous local version is saved** to `Sync Conflicts/`. The conflict copy can be reviewed and renamed manually. The plugin checks downloaded payloads against their content hashes before writing local files.
 
-## Current limitations (v0.2.2)
+## Current limitations (v0.2.3)
 
 - **Manual synchronization only**. There is no background synchronization or reliable iPhone background scheduling.
 - **100 MiB per file** due to the current single-upload and memory budget. Larger attachments block the sync with an error; no files are intentionally changed. Chunked upload sessions are not yet implemented.
@@ -55,7 +55,7 @@ Conflicts favor the Dropbox version **only after the previous local version is s
 
 ## Development
 
-The runtime plugin needs no npm installation and no build step; it ships directly as `main.js`.
+The installed plugin has no runtime dependencies. Development source is kept in `src/main.js`; `npm run build` reproducibly creates the release `main.js`.
 
 To run the built-in tests on a development machine with Node.js 18+:
 
@@ -64,7 +64,7 @@ npm ci
 npm test
 ```
 
-`package-lock.json` is committed so that CI can reproduce dependency resolution. The `.github/workflows/release.yml` workflow verifies the version tag, builds and tests the source, generates provenance attestations, and publishes a GitHub Release with a description taken from `RELEASE_NOTES.md` and the three installation files. Commit the updated source and push tag `0.2.2` **without** a `v` prefix. Let the workflow create the Release; do not create it manually first. GitHub Actions and workflow-token write permissions must be enabled.
+`package-lock.json` is committed so that CI can reproduce dependency resolution. The `.github/workflows/release.yml` workflow verifies the version tag, builds and tests the source, generates provenance attestations, and publishes a GitHub Release with a description taken from `RELEASE_NOTES.md` and the three installation files. Push the exact version tag from `manifest.json` **without** a `v` prefix. Let the workflow create the Release; do not create it manually first. GitHub Actions and workflow-token write permissions must be enabled.
 
 ### Why the community scanner flags vault enumeration
 
