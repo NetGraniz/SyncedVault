@@ -1,10 +1,10 @@
 # Synced Vault
 
-An **experimental, preview-first Dropbox sync plugin for Obsidian** on Windows and iPhone.
+A **preview-first Dropbox sync plugin for Obsidian** on Windows and iPhone.
 
 Synced Vault synchronizes your notes, attachments, images, and the visible `Trash/` folder used by Synced Trash. It saves deletion tombstones in Dropbox so that an out-of-date second device cannot silently restore a deleted note. Concurrent edits are preserved in `Sync Conflicts/` rather than discarded.
 
-> **Version 0.2.3 is an early test release. Back up important notes before testing.** Automated tests cover mocked Dropbox and simulated Windows/iPhone vaults; they are not a substitute for a real two-device test.
+> **Version 1.0.0 is the first stable release.** It has been used for several weeks across multiple Windows PCs and iPhones in addition to automated Dropbox-protocol and two-device regression tests. Keep independent backups of important notes as you would with any synchronization system.
 
 ## Synced Vault sidebar
 
@@ -30,9 +30,9 @@ Enable the community plugin in **Obsidian → Settings → Community plugins**. 
 6. Click **Preview sync** (or the circular-arrow ribbon icon). Read the proposed operations and click **Apply changes** to proceed. `push` uploads, `pull` downloads, `tombstone` records a local deletion, `remove` applies a remote deletion, and `conflict` preserves your local file in `Sync Conflicts/` before applying Dropbox's version.
 7. Run **Preview sync** on the other device and confirm. Repeat when you want to synchronize changes. Conflict copies are uploaded on the next sync.
 
-## Critical migration advice
+## Switching from another sync plugin
 
-**Do not run Remotely Save and Synced Vault simultaneously on a live vault.** First duplicate your vault to a **separate test vault**, disable Remotely Save in that copy, and try Synced Vault there on both devices. Synced Vault uses a separate Dropbox App Folder and never deletes Remotely Save's Dropbox data. Keep your existing Dropbox and local backups until you have validated repeated sync cycles, deletion, restoration, and conflicts yourself.
+**Do not run Remotely Save and Synced Vault simultaneously on the same vault.** Disable the previous sync plugin before enabling Synced Vault, make a backup, and let each device finish its first synchronization before continuing on the next one. Synced Vault uses a separate Dropbox App Folder and does not delete Remotely Save's Dropbox data.
 
 ## Design
 
@@ -40,7 +40,7 @@ For each Vault ID, Dropbox stores a manifest at `/vaults/<id>/manifest.json`, pl
 
 Conflicts favor the Dropbox version **only after the previous local version is saved** to `Sync Conflicts/`. The conflict copy can be reviewed and renamed manually. The plugin checks downloaded payloads against their content hashes before writing local files.
 
-## Current limitations (v0.2.3)
+## Current limitations (v1.0.0)
 
 - **Manual synchronization only**. There is no background synchronization or reliable iPhone background scheduling.
 - **100 MiB per file** due to the current single-upload and memory budget. Larger attachments block the sync with an error; no files are intentionally changed. Chunked upload sessions are not yet implemented.
@@ -50,7 +50,7 @@ Conflicts favor the Dropbox version **only after the previous local version is s
 - Changing the Dropbox account, App Key, or Vault ID after syncing is **not supported safely**. Make a backup and configure a fresh test vault instead.
 - A local deletion racing with an update on another device resolves to the **newly updated remote note** (no note content is lost). A concurrent edit is saved as a conflict copy.
 - Network interruption after a remote commit but before finishing local application can cause a **subsequent conflict copy**; review previews carefully and keep backups.
-- This release has unit, mocked Dropbox-protocol, and simulated two-device tests, **not** a completed end-to-end validation on actual Windows, iPhone, or a real Dropbox account.
+- The manifest v1 data format is stable. Future incompatible formats will require an explicit migration rather than silently replacing existing Dropbox state.
 - A file modified while the preview is open or while its replacement is being downloaded aborts the local overwrite. Retry the sync to retain both versions.
 
 ## Development

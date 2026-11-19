@@ -1,22 +1,24 @@
-# Synced Vault 0.2.3
+# Synced Vault 1.0.0
 
-Security, reliability, and release-quality update for Dropbox synchronization on Windows and iPhone.
+The first stable release of preview-first Dropbox synchronization for Obsidian on Windows and iPhone.
 
-## Important security action
+## Stable release
 
-Version 0.2.2 accidentally included a local `data.json` file in the source repository. The file and its history have been removed in 0.2.3, but the exposed Dropbox authorization must also be revoked in Dropbox. Users of that test build must reconnect Dropbox after updating.
+- Validated through several weeks of daily use across multiple Windows PCs and iPhones with a real Dropbox account.
+- Covered by automated planning, Dropbox protocol, conflict, deletion, race-protection, panel, and simulated two-device tests.
+- Declares the existing manifest v1 format stable. Future incompatible formats will use an explicit migration.
+- Removes the experimental and early-test labels without changing synchronization behavior or stored data.
 
-## Changes
+## Safety model
 
-- Added a safe **Forget authorization** action. It removes the local token while preserving the device ID and synchronization baseline.
-- Prevented a file recreated after the preview from racing with publication of a deletion tombstone.
-- Allowed a live path to replace an old case-variant tombstone while continuing to reject two live paths that collide on Windows.
-- Added manifest download and post-read file-size limits for safer mobile memory use.
-- Added regression tests for case-variant tombstones.
-- Added reproducible build input under `src/`, `versions.json`, CI, release asset verification, release notes, and GitHub artifact attestations.
+- Every synchronization displays a complete preview and requires confirmation.
+- Dropbox manifest writes use revision-based compare-and-swap protection.
+- Concurrent local edits are preserved in `Sync Conflicts/` before the Dropbox version is applied.
+- Downloaded file payloads are verified against their SHA-256 hashes.
+- Persistent deletion tombstones prevent an old offline device from silently restoring a deleted note.
 
 ## Upgrade notes
 
-Back up the vault before updating. After installing 0.2.3, open **Settings → Synced Vault**, revoke the old app connection in Dropbox if you have not already done so, use **Forget authorization**, and authorize Dropbox again on every device. Keep Remotely Save disabled in any vault managed by Synced Vault.
+No migration or reconnection is required when upgrading from 0.2.3. Continue using the same Dropbox App Key and Vault ID. Do not run another full-vault sync plugin on the same vault at the same time, and keep independent backups of important notes.
 
 Synchronization remains manual and preview-first. The maximum supported individual file size remains 100 MiB.

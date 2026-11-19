@@ -1,8 +1,8 @@
 {
   "name": "obsidian-synced-vault",
   "private": true,
-  "version": "0.2.3",
-  "description": "No-build Obsidian plugin for safe Dropbox full-vault synchronization",
+  "version": "1.0.0",
+  "description": "Preview-first Dropbox synchronization for an Obsidian vault",
   "scripts": {
     "build": "node scripts/build.mjs && node --check main.js",
     "check": "node --check src/main.js && npm test",
